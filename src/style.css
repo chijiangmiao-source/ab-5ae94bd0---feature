@@ -140,6 +140,10 @@ input.cost {
   font-variant-numeric: tabular-nums;
 }
 
+.checkline { display: inline-flex !important; align-items: center; gap: 8px; }
+.checkline input[type="checkbox"] { width: 16px; height: 16px; }
+table.loadrep th, table.loadrep td { border: 1px solid var(--line); padding: 4px 12px; }
+
 .hint { font-size: 13px; color: var(--muted); margin: 12px 0 0; }
 
 .alert {

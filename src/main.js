@@ -11,6 +11,9 @@ const state = {
   // 单元格值：0 / 1 / '?'；代价按 `${r},${c}` 保存为字符串（任意位数）
   cells: new Map(),
   costs: new Map(),
+  // 逐细胞负荷区间：`${r}` -> { lo, hi }（字符串，任意位数）
+  loadEnabled: false,
+  loads: new Map(),
   result: null,
   lastInput: null,
   reqId: 0,
@@ -78,6 +81,7 @@ function buildGrid() {
     table.appendChild(tr)
   }
   refreshCostEditor()
+  refreshLoadEditor()
 }
 
 function onCellChange(e) {
@@ -88,6 +92,7 @@ function onCellChange(e) {
   e.target.classList.add(`v${e.target.value === '?' ? 'q' : e.target.value}`)
   invalidateResults()
   refreshCostEditor()
+  refreshLoadEditor()
 }
 
 // —— 问号代价编辑器（顺序即行优先） ——
@@ -157,6 +162,65 @@ function onCostChange(e) {
   invalidateResults()
 }
 
+// —— 逐细胞负荷区间编辑器（启用时显示） ——
+function refreshLoadEditor() {
+  const wrap = $('loadTableWrap')
+  if (!state.loadEnabled) {
+    wrap.classList.add('hidden')
+    return
+  }
+  wrap.classList.remove('hidden')
+  // 已有同名表则原地重建（保留既有输入值）
+  let table = wrap.querySelector('table.loads')
+  if (table) table.remove()
+  table = document.createElement('table')
+  table.className = 'costs'
+  const thead = document.createElement('tr')
+  for (const h of ['细胞', '固定 1 数', '问号数', '负荷下限 lo', '负荷上限 hi']) {
+    const th = document.createElement('th'); th.textContent = h; thead.appendChild(th)
+  }
+  table.appendChild(thead)
+  for (let r = 0; r < state.n; r++) {
+    let fx = 0, q = 0
+    for (let c = 0; c < state.m; c++) {
+      const v = defaultVal(r, c)
+      if (v === '1') fx++
+      else if (v === '?') q++
+    }
+    const cur = state.loads.get(`${r}`) ?? { lo: String(fx), hi: String(fx + q) }
+    const tr = document.createElement('tr')
+    const mk = (txt) => { const td = document.createElement('td'); td.textContent = txt; return td }
+    tr.appendChild(mk(`C${r + 1}`))
+    tr.appendChild(mk(String(fx)))
+    tr.appendChild(mk(String(q)))
+    for (const which of ['lo', 'hi']) {
+      const td = document.createElement('td')
+      const inp = document.createElement('input')
+      inp.type = 'text'
+      inp.inputMode = 'numeric'
+      inp.pattern = '[0-9]*'
+      inp.value = cur[which]
+      inp.className = 'cost load'
+      inp.dataset.r = r
+      inp.dataset.which = which
+      inp.addEventListener('input', onLoadChange)
+      td.appendChild(inp)
+      tr.appendChild(td)
+    }
+    table.appendChild(tr)
+  }
+  wrap.appendChild(table)
+}
+
+function onLoadChange(e) {
+  const r = Number(e.target.dataset.r)
+  const which = e.target.dataset.which
+  const cur = state.loads.get(`${r}`) ?? { lo: '0', hi: '0' }
+  cur[which] = e.target.value
+  state.loads.set(`${r}`, cur)
+  invalidateResults()
+}
+
 // —— 规模应用（错误时保留草稿） ——
 function applySize() {
   const n = Number($('nRows').value)
@@ -175,6 +239,9 @@ function applySize() {
   for (const key of [...state.costs.keys()]) {
     const [r, c] = key.split(',').map(Number)
     if (r >= n || c >= m) state.costs.delete(key)
+  }
+  for (const key of [...state.loads.keys()]) {
+    if (Number(key) >= n) state.loads.delete(key)
   }
   clearAlerts()
   invalidateResults()
@@ -201,7 +268,20 @@ function collectInput() {
       }
     }
   }
-  return { matrix, costs }
+  const input = { matrix, costs, loadEnabled: state.loadEnabled }
+  if (state.loadEnabled) {
+    input.loads = []
+    for (let r = 0; r < state.n; r++) {
+      let fx = 0, q = 0
+      for (let c = 0; c < state.m; c++) {
+        if (matrix[r][c] === 1) fx++
+        else if (matrix[r][c] === -1) q++
+      }
+      const cur = state.loads.get(`${r}`) ?? { lo: String(fx), hi: String(fx + q) }
+      input.loads.push({ lo: cur.lo.trim(), hi: cur.hi.trim() })
+    }
+  }
+  return input
 }
 
 function validateCostsLocally(input) {
@@ -211,6 +291,15 @@ function validateCostsLocally(input) {
       if (!/^\d+$/.test(String(v))) {
         return `第 ${i + 1} 个问号的“${which === 'c0' ? '填 0' : '填 1'}代价”不是非负整数：${JSON.stringify(v)}`
       }
+    }
+  }
+  if (input.loadEnabled) {
+    for (let r = 0; r < input.matrix.length; r++) {
+      const { lo, hi } = input.loads[r]
+      if (!/^\d+$/.test(String(lo)) || !/^\d+$/.test(String(hi))) {
+        return `细胞 C${r + 1} 的负荷区间不是非负整数：${JSON.stringify([lo, hi])}`
+      }
+      if (BigInt(lo) > BigInt(hi)) return `细胞 C${r + 1} 的负荷下限（${lo}）大于上限（${hi}）`
     }
   }
   return null
@@ -257,9 +346,12 @@ function renderResult(res, input) {
   if (res.status === 'infeasible') {
     $('conflictBox').classList.add('hidden')
     $('infeasibleBox').classList.remove('hidden')
-    $('infeasibleBox').innerHTML =
-      '<b>不存在可行补全。</b>固定数据本身没有直接的三配型冲突，但无论怎样补全问号，' +
-      '都无法使全部突变两两满足无限位点。请调整固定值或问号位置。'
+    $('infeasibleBox').innerHTML = input.loadEnabled
+      ? '<b>不存在可行补全。</b>固定数据没有直接的输入冲突（三配型或负荷越界），' +
+        '但全部细胞的负荷区间与无限位点约束联合起来无解：各列分量各自可行，' +
+        '组合后找不到同时满足所有闭区间的补全。请放宽某些细胞的区间，或调整固定值/问号位置。'
+      : '<b>不存在可行补全。</b>固定数据本身没有直接的三配型冲突，但无论怎样补全问号，' +
+        '都无法使全部突变两两满足无限位点。请调整固定值或问号位置。'
     $('resultSection').classList.add('hidden')
     return
   }
@@ -301,24 +393,68 @@ function renderResult(res, input) {
   }
 
   renderTree(res.cloneTree)
+  renderLoadReport(res, input)
   $('jsonDump').textContent = JSON.stringify({ input, result: res }, null, 2)
   $('resultSection').classList.remove('hidden')
+}
+
+function renderLoadReport(res, input) {
+  const wrap = $('loadReportWrap')
+  if (!input.loadEnabled || !res.loadReport) {
+    wrap.classList.add('hidden')
+    return
+  }
+  wrap.classList.remove('hidden')
+  const table = $('loadReportTable')
+  table.innerHTML = ''
+  const thead = document.createElement('tr')
+  for (const h of ['细胞', '最终负荷', '区间', '区间余量（上限 − 最终负荷）']) {
+    const th = document.createElement('th'); th.textContent = h; thead.appendChild(th)
+  }
+  table.appendChild(thead)
+  for (const e of res.loadReport) {
+    const tr = document.createElement('tr')
+    const mk = (txt) => { const td = document.createElement('td'); td.textContent = txt; return td }
+    tr.appendChild(mk(`C${e.row + 1}`))
+    tr.appendChild(mk(String(e.load)))
+    tr.appendChild(mk(`[${e.lo}, ${e.hi}]`))
+    tr.appendChild(mk(String(e.slack)))
+    table.appendChild(tr)
+  }
 }
 
 function renderConflict(res) {
   $('resultSection').classList.add('hidden')
   const box = $('conflictBox')
   box.classList.remove('hidden')
-  const parts = ['<b>固定数据已形成三配型冲突，</b>无需补全即可判定不满足无限位点。涉及突变对与三项细胞见证：<ul class="conflict-list">']
-  for (const cf of res.conflicts) {
-    const fmt = (rows) => rows.map((r) => `C${r + 1}`).join('、')
-    parts.push(
-      `<li><b>M${cf.a + 1} × M${cf.b + 1}</b>：` +
-      `11 见证 ${fmt(cf.p11)}；` +
-      `10 见证 ${fmt(cf.p10)}；` +
-      `01 见证 ${fmt(cf.p01)}。</li>`)
+  const parts = []
+  if (res.loadConflicts && res.loadConflicts.length) {
+    parts.push('<b>逐细胞负荷输入冲突：</b>无需搜索即可判定以下细胞的区间无法满足，' +
+      '草稿已保留，且不会展示旧结果。<ul class="conflict-list">')
+    for (const lc of res.loadConflicts) {
+      if (lc.reason === 'over') {
+        parts.push(`<li><b>C${lc.row + 1}</b>：固定 1 已达 <b>${lc.fixed}</b>，` +
+          `超过负荷上限 ${lc.hi}（区间 [${lc.lo}, ${lc.hi}]）。</li>`)
+      } else {
+        parts.push(`<li><b>C${lc.row + 1}</b>：固定 1 为 ${lc.fixed}、问号仅 ${lc.unknown} 个，` +
+          `即使全部填 1 也只有 ${lc.fixed + lc.unknown}，达不到下限 ${lc.lo}` +
+          `（区间 [${lc.lo}, ${lc.hi}]）。</li>`)
+      }
+    }
+    parts.push('</ul>')
   }
-  parts.push('</ul>')
+  if (res.conflicts && res.conflicts.length) {
+    parts.push('<b>固定数据已形成三配型冲突，</b>无需补全即可判定不满足无限位点。涉及突变对与三项细胞见证：<ul class="conflict-list">')
+    for (const cf of res.conflicts) {
+      const fmt = (rows) => rows.map((r) => `C${r + 1}`).join('、')
+      parts.push(
+        `<li><b>M${cf.a + 1} × M${cf.b + 1}</b>：` +
+        `11 见证 ${fmt(cf.p11)}；` +
+        `10 见证 ${fmt(cf.p10)}；` +
+        `01 见证 ${fmt(cf.p01)}。</li>`)
+    }
+    parts.push('</ul>')
+  }
   box.innerHTML = parts.join('')
 }
 
@@ -398,6 +534,29 @@ const CONFLICT = {
   ],
   costs: {},
 }
+// 启用逐细胞负荷后的示例：区间把旧最优（全填 1、代价 0）排除，
+// 迫使跨列分量联合选解（C1 最终负荷恰为 1）。
+const LOADSAMPLE = {
+  n: 4, m: 3,
+  matrix: [
+    [-1, -1, -1],
+    [0, 0, 0],
+    [0, 0, 0],
+    [0, 0, 0],
+  ],
+  costs: {
+    '0,0': { c0: '5', c1: '0' },
+    '0,1': { c0: '5', c1: '0' },
+    '0,2': { c0: '5', c1: '0' },
+  },
+  loadEnabled: true,
+  loads: {
+    0: { lo: '1', hi: '1' },
+    1: { lo: '0', hi: '3' },
+    2: { lo: '0', hi: '3' },
+    3: { lo: '0', hi: '3' },
+  },
+}
 
 function loadPreset(p) {
   state.n = p.n
@@ -407,8 +566,13 @@ function loadPreset(p) {
     for (let c = 0; c < p.m; c++)
       state.cells.set(`${r},${c}`, p.matrix[r][c] === -1 ? '?' : String(p.matrix[r][c]))
   state.costs = new Map(Object.entries(p.costs).map(([k, v]) => [k, { ...v }]))
+  state.loadEnabled = p.loadEnabled === true
+  state.loads = p.loads
+    ? new Map(Object.entries(p.loads).map(([k, v]) => [k, { ...v }]))
+    : new Map()
   $('nRows').value = String(p.n)
   $('nCols').value = String(p.m)
+  $('loadEnabled').checked = state.loadEnabled
   clearAlerts()
   invalidateResults()
   buildGrid()
@@ -421,9 +585,17 @@ $('applySize').addEventListener('click', applySize)
 $('solveBtn').addEventListener('click', runSolve)
 $('loadSample').addEventListener('click', () => loadPreset(SAMPLE))
 $('loadConflict').addEventListener('click', () => loadPreset(CONFLICT))
+const loadLoadBtn = $('loadLoadSample')
+if (loadLoadBtn) loadLoadBtn.addEventListener('click', () => loadPreset(LOADSAMPLE))
+$('loadEnabled').addEventListener('change', (e) => {
+  state.loadEnabled = e.target.checked
+  invalidateResults()
+  refreshLoadEditor()
+})
 $('clearAll').addEventListener('click', () => {
   state.cells = new Map()
   state.costs = new Map()
+  state.loads = new Map()
   clearAlerts()
   invalidateResults()
   buildGrid()

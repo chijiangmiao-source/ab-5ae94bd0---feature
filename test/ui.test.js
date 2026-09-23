@@ -123,3 +123,65 @@ test('UI 端到端：示例求解→计数/规范矩阵/可变标记/克隆树�
   assert.match($('errorBox').textContent, /非负整数/)
   assert.equal($('resultSection').classList.contains('hidden'), true)
 })
+
+test('UI 负荷流程：启用复选框→区间编辑→跨分量耦合结果/负荷报告；输入冲突保留草稿不展示旧结果', () => {
+  const $ = (id) => document.getElementById(id)
+
+  // 载入负荷示例：3 个单列分量问号全在 C1，区间 [1,1]
+  $('loadLoadSample').click()
+  assert.equal($('loadEnabled').checked, true)
+  assert.equal($('loadTableWrap').classList.contains('hidden'), false)
+  const loadInputs = () => document.querySelectorAll('#loadTableWrap input.load')
+  assert.equal(loadInputs().length, 8) // 4 细胞 × (lo,hi)
+  $('solveBtn').click()
+
+  // 旧最优（全 1、代价 0）被区间排除：新最优代价 10、计数 3
+  assert.equal($('resultSection').classList.contains('hidden'), false)
+  assert.equal($('optCost').textContent, '10')
+  assert.equal($('optCount').textContent, '3')
+
+  // 负荷报告表出现，C1 最终负荷 1、区间 [1, 1]、余量 0
+  assert.equal($('loadReportWrap').classList.contains('hidden'), false)
+  const repRows = [...$('loadReportTable').querySelectorAll('tr')]
+  assert.equal(repRows.length, 5)
+  const c1 = [...repRows[1].children].map((td) => td.textContent)
+  assert.deepEqual(c1, ['C1', '1', '[1, 1]', '0'])
+
+  // 关掉负荷约束再解：回到旧最优代价 0（未启用时原样例语义）
+  $('loadEnabled').checked = false
+  fire($('loadEnabled'), 'change')
+  assert.equal($('loadTableWrap').classList.contains('hidden'), true)
+  assert.equal($('resultSection').classList.contains('hidden'), true) // 编辑立即失效旧结果
+  $('solveBtn').click()
+  assert.equal($('optCost').textContent, '0')
+  assert.equal($('loadReportWrap').classList.contains('hidden'), true)
+
+  // 重新启用并给出输入冲突（C1 上限 0，但其问号全填 0 也满足——改为载入有固定1的矩阵）
+  $('loadSample').click()
+  $('loadEnabled').checked = true
+  fire($('loadEnabled'), 'change')
+  // 示例 C1 固定 1（matrix[0][0]=1）：把 C1 的 hi 改成 0 制造 over 输入冲突
+  const inputs = document.querySelectorAll('#loadTableWrap input.load')
+  const c1hi = [...inputs].find((i) => i.dataset.r === '0' && i.dataset.which === 'hi')
+  c1hi.value = '0'
+  fire(c1hi, 'input')
+  // 先求一次得到正常结果（区间默认值），再改成冲突
+  $('solveBtn').click()
+  assert.equal($('resultSection').classList.contains('hidden'), true)
+  assert.equal($('conflictBox').classList.contains('hidden'), false)
+  assert.match($('conflictBox').textContent, /负荷输入冲突/)
+  assert.match($('conflictBox').textContent, /超过负荷上限 0/)
+
+  // 非法区间（下限>上限）被本地拦截，草稿与旧结果均不被覆盖
+  $('loadSample').click()
+  $('loadEnabled').checked = true
+  fire($('loadEnabled'), 'change')
+  const ins2 = document.querySelectorAll('#loadTableWrap input.load')
+  const c1lo = [...ins2].find((i) => i.dataset.r === '0' && i.dataset.which === 'lo')
+  c1lo.value = '9'
+  fire(c1lo, 'input')
+  $('solveBtn').click()
+  assert.equal($('errorBox').classList.contains('hidden'), false)
+  assert.match($('errorBox').textContent, /下限.*大于上限/)
+  assert.equal($('resultSection').classList.contains('hidden'), true)
+})

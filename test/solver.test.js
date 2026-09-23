@@ -2,8 +2,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { solve, buildCloneTree } from '../src/solver.js'
 
-// —— 暴力参考实现：枚举全部 2^k 补全（仅用于小规模测试） ——
-function bruteForce(matrix, costs) {
+// —— 暴力参考实现（可选逐细胞负荷区间）：枚举全部 2^k 补全（仅用于小规模测试） ——
+function bruteForce(matrix, costs, loads = null) {
   const n = matrix.length
   const m = matrix[0].length
   const unk = []
@@ -20,6 +20,10 @@ function bruteForce(matrix, costs) {
       }
     return true
   }
+  const loadOK = (A) => !loads || loads.every((L, r) => {
+    const t = A[r].reduce((s, v) => s + v, 0)
+    return BigInt(t) >= L.lo && BigInt(t) <= L.hi
+  })
   let best = null
   let count = 0n
   let canonical = null
@@ -33,7 +37,7 @@ function bruteForce(matrix, costs) {
       A[r][c] = v
       cost += BigInt(v ? costs[i].c1 : costs[i].c0)
     }
-    if (!pairOK(A)) continue
+    if (!pairOK(A) || !loadOK(A)) continue
     if (best === null || cost < best) {
       best = cost
       count = 1n
@@ -325,4 +329,240 @@ test('大规模随机（15..28 问号）：可行、最优、计数与逐格裁�
       }
     }
   }
+})
+
+// ===================== 逐细胞负荷约束 =====================
+
+test('未启用负荷：不含 loadEnabled 字段时旧行为严格不变（同矩阵与代价结果一致）', () => {
+  const matrix = [
+    [1, 0, -1],
+    [-1, 0, 0],
+    [0, 1, -1],
+    [0, -1, 0],
+  ]
+  const costs = [
+    { c0: 5, c1: 5 },
+    { c0: 9, c1: 1 },
+    { c0: 2, c1: 2 },
+    { c0: 0, c1: 7 },
+  ]
+  const r1 = solve({ matrix, costs })
+  const r2 = solve({ matrix, costs, loadEnabled: false })
+  for (const r of [r1, r2]) {
+    assert.equal(r.status, 'ok')
+    assert.equal(r.optimumCost, 8n)
+    assert.equal(r.optimumCount, 3n)
+    assert.deepEqual(r.matrix, [
+      [1, 0, 0],
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 0],
+    ])
+    assert.equal(r.loadReport, undefined)
+  }
+})
+
+test('负荷输入冲突：固定 1 已超上限 -> conflict.loadConflicts(over)，草稿级提示', () => {
+  const matrix = [
+    [1, 0, 0],
+    [1, 0, 0],
+    [0, 0, 0],
+    [0, 0, 0],
+  ]
+  const loads = [{ lo: 0, hi: 0 }, { lo: 0, hi: 3 }, { lo: 0, hi: 3 }, { lo: 0, hi: 3 }]
+  const r = solve({ matrix, costs: [], loadEnabled: true, loads })
+  assert.equal(r.status, 'conflict')
+  assert.equal(r.conflicts.length, 0)
+  assert.equal(r.loadConflicts.length, 1)
+  assert.equal(r.loadConflicts[0].kind, 'load')
+  assert.equal(r.loadConflicts[0].reason, 'over')
+  assert.equal(r.loadConflicts[0].row, 0)
+  assert.equal(r.loadConflicts[0].fixed, 1)
+  assert.equal(r.loadConflicts[0].hi, 0)
+})
+
+test('负荷输入冲突：剩余问号全填 1 也达不到下限 -> conflict.loadConflicts(under)', () => {
+  const matrix = [
+    [1, -1, 0],
+    [0, 0, 0],
+    [0, 0, 0],
+    [0, 0, 0],
+  ]
+  const costs = [{ c0: 0, c1: 0 }]
+  const loads = [{ lo: 3, hi: 3 }, { lo: 0, hi: 3 }, { lo: 0, hi: 3 }, { lo: 0, hi: 3 }]
+  const r = solve({ matrix, costs, loadEnabled: true, loads })
+  assert.equal(r.status, 'conflict')
+  assert.equal(r.loadConflicts.length, 1)
+  assert.equal(r.loadConflicts[0].reason, 'under')
+  assert.equal(r.loadConflicts[0].row, 0)
+  assert.equal(r.loadConflicts[0].fixed, 1)
+  assert.equal(r.loadConflicts[0].unknown, 1)
+})
+
+test('全局不可行：分量各自可行但跨分量负荷组合无解 -> infeasible（非输入冲突）', () => {
+  const matrix = [
+    [-1, 1, 0],
+    [0, -1, -1],
+    [1, 0, 1],
+    [1, -1, 1],
+  ]
+  const costs = Array.from({ length: 4 }, () => ({ c0: 0, c1: 0 }))
+  const loads = [
+    { lo: 1, hi: 1 },
+    { lo: 1, hi: 1 },
+    { lo: 2, hi: 2 },
+    { lo: 3, hi: 3 },
+  ]
+  // 无负荷时 ISA 可行；逐行也无 over/under 输入冲突
+  assert.equal(solve({ matrix, costs }).status, 'ok')
+  const r = solve({ matrix, costs, loadEnabled: true, loads })
+  assert.equal(r.status, 'infeasible')
+  assert.equal(bruteForce(matrix, costs, loads), null)
+})
+
+test('跨分量负荷耦合改变最优：旧最优代价 0/计数 1 被区间排除，重新精确最小化为 10/计数 3', () => {
+  // 三个互不连边的单列分量，问号全在 C1 行；旧最优全填 1（c1=0）。
+  // 区间 [1,1] 迫使恰有一个问号填 1（代价 5），共 3 个同优选择。
+  const matrix = [
+    [-1, -1, -1],
+    [0, 0, 0],
+    [0, 0, 0],
+    [0, 0, 0],
+  ]
+  const costs = Array.from({ length: 3 }, () => ({ c0: 5, c1: 0 }))
+  const old = solve({ matrix, costs })
+  assert.equal(old.optimumCost, 0n)
+  assert.equal(old.optimumCount, 1n)
+  const loads = [{ lo: 1, hi: 1 }, { lo: 0, hi: 3 }, { lo: 0, hi: 3 }, { lo: 0, hi: 3 }]
+  const r = solve({ matrix, costs, loadEnabled: true, loads })
+  assert.equal(r.status, 'ok')
+  assert.equal(r.optimumCost, 10n)
+  assert.equal(r.optimumCount, 3n)
+  // 行优先 0 优先规范：最后一个问号取 1，其余取 0
+  assert.deepEqual(r.matrix[0], [0, 0, 1])
+  assert.ok(r.calls.every((x) => x.kind === 'free'))
+  // 负荷报告：C1 最终负荷 1、余量 0
+  assert.equal(r.loadReport[0].load, 1)
+  assert.equal(r.loadReport[0].slack, 0)
+  assert.equal(r.loadReport[0].lo, 1)
+  assert.equal(r.loadReport[0].hi, 1)
+  assert.ok(r.loadReport.slice(1).every((e) => e.load === 0 && e.slack === 3))
+})
+
+test('固定 1 计入负荷：已有固定 1 满足区间时问号全部按最优填 0', () => {
+  const matrix = [
+    [-1, -1, 1],
+    [0, 0, 0],
+    [0, 0, 0],
+    [0, 0, 0],
+  ]
+  const costs = [{ c0: 5, c1: 0 }, { c0: 5, c1: 0 }]
+  const loads = [{ lo: 1, hi: 1 }, { lo: 0, hi: 3 }, { lo: 0, hi: 3 }, { lo: 0, hi: 3 }]
+  const r = solve({ matrix, costs, loadEnabled: true, loads })
+  assert.equal(r.status, 'ok')
+  assert.equal(r.optimumCost, 10n) // 两个问号都填 0
+  assert.equal(r.optimumCount, 1n)
+  assert.deepEqual(r.matrix[0], [0, 0, 1])
+  assert.equal(r.loadReport[0].load, 1)
+})
+
+test('负荷随机小规模：最优代价/计数/规范矩阵/逐格裁决/负荷报告与暴力枚举一致', () => {
+  const rand = rng(20260924)
+  let feasibleCases = 0
+  for (let t = 0; t < 300; t++) {
+    const n = 4 + Math.floor(rand() * 3)
+    const m = 3 + Math.floor(rand() * 3)
+    const matrix = []
+    const costs = []
+    for (let r = 0; r < n; r++) {
+      const row = []
+      for (let c = 0; c < m; c++) {
+        if (rand() < 0.4) {
+          row.push(-1)
+          costs.push({ c0: Math.floor(rand() * 4), c1: Math.floor(rand() * 4) })
+        } else row.push(rand() < 0.5 ? 0 : 1)
+      }
+      matrix.push(row)
+    }
+    let uq = 0
+    for (const row of matrix) for (const v of row) if (v === -1) uq++
+    if (uq > 13) { t--; continue }
+    const loads = matrix.map((row) => {
+      const fx = row.filter((v) => v === 1).length
+      const u = row.filter((v) => v === -1).length
+      const lo = fx + Math.floor(rand() * (u + 1))
+      const hi = Math.min(m, lo + Math.floor(rand() * 2))
+      return { lo, hi }
+    })
+    const ref = bruteForce(matrix, costs, loads)
+    const res = solve({ matrix, costs, loadEnabled: true, loads })
+    if (ref === null) {
+      assert.ok(res.status === 'infeasible' || res.status === 'conflict',
+        `case ${t}: 暴力无解但求解器 ${res.status}`)
+      continue
+    }
+    feasibleCases++
+    assert.equal(res.status, 'ok', `case ${t}`)
+    assert.equal(res.optimumCost, ref.best, `case ${t} 最优代价`)
+    assert.equal(res.optimumCount, ref.count, `case ${t} 补全数`)
+    assert.deepEqual(res.matrix, ref.canonical, `case ${t} 规范矩阵`)
+    ref.unk.forEach(([r, c], i) => {
+      const call = res.calls.find((x) => x.r === r && x.c === c)
+      const expect = ref.ones[i] === 0n ? 'fixed0' : ref.ones[i] === ref.count ? 'fixed1' : 'free'
+      assert.equal(call.kind, expect, `case ${t} 格(${r},${c}) 裁决`)
+    })
+    for (let r = 0; r < n; r++) {
+      const load = res.matrix[r].reduce((s, v) => s + v, 0)
+      assert.equal(res.loadReport[r].load, load, `case ${t} 行${r} 报告负荷`)
+      assert.equal(res.loadReport[r].slack, loads[r].hi - load, `case ${t} 行${r} 余量`)
+      assert.ok(load >= loads[r].lo && load <= loads[r].hi, `case ${t} 行${r} 在区间内`)
+    }
+  }
+  assert.ok(feasibleCases > 40, `可行样例过少：${feasibleCases}`)
+})
+
+test('负荷 + 任意精度代价：BigInt 全程精确', () => {
+  const matrix = [
+    [-1, -1, -1],
+    [0, 0, 0],
+    [0, 0, 0],
+    [0, 0, 0],
+  ]
+  const B = '123456789012345678901234567890'
+  const costs = [
+    { c0: B, c1: '0' },
+    { c0: B, c1: '0' },
+    { c0: '0', c1: '9' },
+  ]
+  const loads = [{ lo: 1, hi: 1 }, { lo: 0, hi: 3 }, { lo: 0, hi: 3 }, { lo: 0, hi: 3 }]
+  const r = solve({ matrix, costs, loadEnabled: true, loads })
+  assert.equal(r.status, 'ok')
+  // 恰一个问号填 1：前两种补法代价 B（2 个同优），第三种 2B+9；B 为 30 位整数
+  assert.equal(r.optimumCost, BigInt(B))
+  assert.equal(r.optimumCount, 2n)
+  // 行优先 0 优先：[0,1,0] 小于 [1,0,0]
+  assert.deepEqual(r.matrix[0], [0, 1, 0])
+})
+
+test('负荷区间校验：非数组、越界、下限大于上限均为 error（草稿保留）', () => {
+  const matrix = [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+    [0, 0, 0],
+  ]
+  assert.equal(solve({ matrix, costs: [], loadEnabled: true }).status, 'error')
+  assert.equal(solve({ matrix, costs: [], loadEnabled: true, loads: [{ lo: 0, hi: 1 }] }).status, 'error')
+  assert.equal(solve({
+    matrix, costs: [], loadEnabled: true,
+    loads: [{ lo: -1, hi: 1 }, { lo: 0, hi: 3 }, { lo: 0, hi: 3 }, { lo: 0, hi: 3 }],
+  }).status, 'error')
+  assert.equal(solve({
+    matrix, costs: [], loadEnabled: true,
+    loads: [{ lo: 2, hi: 1 }, { lo: 0, hi: 3 }, { lo: 0, hi: 3 }, { lo: 0, hi: 3 }],
+  }).status, 'error')
+  assert.equal(solve({
+    matrix, costs: [], loadEnabled: true,
+    loads: [{ lo: 0, hi: 4 }, { lo: 0, hi: 3 }, { lo: 0, hi: 3 }, { lo: 0, hi: 3 }],
+  }).status, 'error')
 })
