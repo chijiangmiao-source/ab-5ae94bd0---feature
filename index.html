@@ -29,6 +29,7 @@
           <button id="applySize" type="button">应用规模</button>
           <span class="sep"></span>
           <button id="loadSample" type="button" class="ghost">载入示例</button>
+          <button id="loadLoads" type="button" class="ghost">负荷示例</button>
           <button id="loadConflict" type="button" class="ghost">冲突示例</button>
           <button id="clearAll" type="button" class="ghost">清空</button>
         </div>
@@ -40,6 +41,21 @@
         未知格统计：<b id="unkCount">0</b> / 28。每个问号右侧的两个输入分别为
         <b>填 0 代价</b> 与 <b>填 1 代价</b>（非负整数，支持任意位数）。
       </p>
+
+      <h3>逐细胞负荷约束（可选）</h3>
+      <div class="controls">
+        <label class="checkline">
+          <input id="loadsEnabled" type="checkbox" />
+          启用：为每个细胞限定最终为 1 的突变数闭区间（固定 1 也计入）
+        </label>
+      </div>
+      <div id="loadsEditorWrap" class="hidden">
+        <div class="scroll"><table id="loadsTable" class="loads"></table></div>
+        <p class="hint">
+          为每个细胞填写 <b>下限</b> 与 <b>上限</b>（0 至突变数的整数，下限 ≤ 上限）。
+          启用后将在同时满足全部区间与无限位点约束的补全中重新精确最小化总代价。
+        </p>
+      </div>
     </section>
 
     <section class="card">
@@ -79,6 +95,11 @@
       <h3>规范克隆树（突变载体包含关系）</h3>
       <div id="tree" class="tree"></div>
       <p id="absentNote" class="hint hidden"></p>
+
+      <div id="loadsResultWrap" class="hidden">
+        <h3>逐细胞最终负荷与区间余量</h3>
+        <div class="scroll"><table id="loadsResult" class="loads"></table></div>
+      </div>
 
       <h3>可复算记录（输入 + 结果 JSON）</h3>
       <div class="controls">
