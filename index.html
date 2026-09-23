@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>无限位点完美谱系补全</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <header>
+    <h1>单细胞靶向测序矩阵 · 无限位点完美谱系补全</h1>
+    <p class="sub">
+      4–18 个细胞、3–12 个突变；单元格取 <code>0</code>/<code>1</code>/<code>?</code>，未知格 ≤ 28。
+      Web Worker 在后台精确求解：任意两列不得同时出现 <b>11、10、01</b>，最小化问号补值总代价。
+    </p>
+  </header>
+
+  <main>
+    <section class="card">
+      <div class="card-head">
+        <h2>1. 录入矩阵与代价</h2>
+        <div class="controls">
+          <label>细胞数
+            <input id="nRows" type="number" min="4" max="18" value="6" />
+          </label>
+          <label>突变数
+            <input id="nCols" type="number" min="3" max="12" value="4" />
+          </label>
+          <button id="applySize" type="button">应用规模</button>
+          <span class="sep"></span>
+          <button id="loadSample" type="button" class="ghost">载入示例</button>
+          <button id="loadConflict" type="button" class="ghost">冲突示例</button>
+          <button id="clearAll" type="button" class="ghost">清空</button>
+        </div>
+      </div>
+      <div class="scroll">
+        <table id="grid"></table>
+      </div>
+      <p class="hint">
+        未知格统计：<b id="unkCount">0</b> / 28。每个问号右侧的两个输入分别为
+        <b>填 0 代价</b> 与 <b>填 1 代价</b>（非负整数，支持任意位数）。
+      </p>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>2. 求解</h2>
+        <div class="controls">
+          <button id="solveBtn" type="button" class="primary">在 Worker 中精确求解</button>
+          <span id="workerStatus" class="muted"></span>
+        </div>
+      </div>
+      <div id="errorBox" class="alert error hidden"></div>
+      <div id="conflictBox" class="alert conflict hidden"></div>
+      <div id="infeasibleBox" class="alert warn hidden"></div>
+    </section>
+
+    <section id="resultSection" class="card hidden">
+      <div class="card-head"><h2>3. 最优补全结论</h2></div>
+      <div class="metrics">
+        <div class="metric">
+          <div class="metric-label">最小补值总代价</div>
+          <div id="optCost" class="metric-value mono"></div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">最优补全数（任意精度）</div>
+          <div id="optCount" class="metric-value mono"></div>
+        </div>
+      </div>
+
+      <h3>规范补全矩阵（行优先、0 优先裁决）</h3>
+      <div class="scroll"><table id="resultMatrix"></table></div>
+      <div class="legend">
+        <span><i class="sw f0"></i>固定 0：所有最优补全均为 0</span>
+        <span><i class="sw f1"></i>固定 1：所有最优补全均为 1</span>
+        <span><i class="sw free"></i>同优可变：0/1 均可达最优</span>
+      </div>
+
+      <h3>规范克隆树（突变载体包含关系）</h3>
+      <div id="tree" class="tree"></div>
+      <p id="absentNote" class="hint hidden"></p>
+
+      <h3>可复算记录（输入 + 结果 JSON）</h3>
+      <div class="controls">
+        <button id="copyJson" type="button" class="ghost">复制 JSON</button>
+        <span id="copyStatus" class="muted"></span>
+      </div>
+      <pre id="jsonDump" class="json"></pre>
+    </section>
+  </main>
+
+  <footer class="muted">
+    求解在浏览器本地 Web Worker 中完成，不上传数据。计数使用 BigInt 任意精度整数。
+  </footer>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

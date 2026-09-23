@@ -1,0 +1,251 @@
+:root {
+  --bg: #f4f6f9;
+  --card: #ffffff;
+  --ink: #1f2733;
+  --muted: #6b7686;
+  --line: #d9dee6;
+  --accent: #2563eb;
+  --accent-ink: #ffffff;
+  --f0: #e8eefc;
+  --f1: #c9ddff;
+  --free: #ffe9b8;
+  --err-bg: #fdecec;
+  --err-ink: #9b1c1c;
+  --warn-bg: #fff6e0;
+  --warn-ink: #8a5a00;
+  --conf-bg: #fdeeea;
+  --conf-ink: #a23a1c;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.55;
+}
+
+header {
+  padding: 28px 24px 8px;
+  max-width: 1080px;
+  margin: 0 auto;
+}
+h1 { font-size: 22px; margin: 0 0 6px; }
+.sub { color: var(--muted); font-size: 14px; margin: 0; }
+
+main {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 12px 24px 40px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin: 16px 0;
+  box-shadow: 0 1px 2px rgba(20, 30, 50, 0.04);
+}
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+h2 { font-size: 17px; margin: 0; }
+h3 { font-size: 15px; margin: 20px 0 8px; }
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.controls label {
+  font-size: 13px;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+input[type="number"] {
+  width: 64px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+button {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+button:hover { border-color: #b7c0cf; }
+button:disabled { opacity: 0.6; cursor: default; }
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+button.ghost { background: #fafbfd; }
+.sep { width: 1px; height: 22px; background: var(--line); }
+
+.scroll { overflow-x: auto; }
+
+table { border-collapse: collapse; }
+th, td { text-align: center; padding: 4px 6px; }
+thead th, tbody th {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+#grid td { padding: 3px; }
+
+select.cell {
+  width: 44px;
+  height: 34px;
+  text-align: center;
+  font-size: 15px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+select.cell.v0 { background: #f2f5fa; }
+select.cell.v1 { background: var(--f1); }
+select.cell.vq { background: var(--free); font-weight: 700; }
+
+table.costs { margin-top: 4px; }
+table.costs th, table.costs td { border: 1px solid var(--line); padding: 4px 10px; }
+input.cost {
+  width: 92px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hint { font-size: 13px; color: var(--muted); margin: 12px 0 0; }
+
+.alert {
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 14px;
+  margin-top: 8px;
+}
+.alert.error { background: var(--err-bg); color: var(--err-ink); border: 1px solid #f3c2c2; }
+.alert.warn { background: var(--warn-bg); color: var(--warn-ink); border: 1px solid #efd9a3; }
+.alert.conflict { background: var(--conf-bg); color: var(--conf-ink); border: 1px solid #f0cdbb; }
+.conflict-list { margin: 8px 0 0; padding-left: 20px; }
+.conflict-list li { margin: 4px 0; }
+
+.metrics { display: flex; gap: 16px; flex-wrap: wrap; margin: 6px 0 10px; }
+.metric {
+  flex: 1 1 240px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: #fbfcfe;
+}
+.metric-label { font-size: 12px; color: var(--muted); }
+.metric-value { font-size: 22px; font-weight: 700; margin-top: 2px; word-break: break-all; }
+.mono { font-variant-numeric: tabular-nums; }
+
+#resultMatrix td {
+  border: 1px solid var(--line);
+  width: 46px;
+  height: 32px;
+  font-size: 15px;
+}
+#resultMatrix th { background: #fafbfd; }
+#resultMatrix td.fixedcell { background: #f5f7fa; color: #3a4453; }
+#resultMatrix td.fixed0 { background: var(--f0); }
+#resultMatrix td.fixed1 { background: var(--f1); font-weight: 700; }
+#resultMatrix td.free {
+  background: repeating-linear-gradient(45deg, var(--free), var(--free) 6px, #fff3d6 6px, #fff3d6 12px);
+  font-weight: 700;
+}
+
+.legend {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 10px;
+}
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 14px; height: 14px; border-radius: 4px; border: 1px solid var(--line); display: inline-block; }
+.sw.f0 { background: var(--f0); }
+.sw.f1 { background: var(--f1); }
+.sw.free { background: repeating-linear-gradient(45deg, var(--free), var(--free) 4px, #fff3d6 4px, #fff3d6 8px); }
+
+ul.clonetree, .tree ul { list-style: none; margin: 0; padding-left: 22px; }
+.clonetree { padding-left: 0 !important; }
+.tree li {
+  position: relative;
+  margin: 6px 0;
+}
+.tree li::before {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: 16px;
+  width: 12px;
+  height: 1px;
+  background: #b9c2d0;
+}
+.tree li::after {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: #e1e6ee;
+}
+.tree li:last-child::after { height: 16px; }
+.clonetree > li::before, .clonetree > li::after { display: none; }
+.treenode {
+  display: inline-block;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px 10px;
+  background: #fbfcfe;
+  font-size: 13px;
+}
+.treenode.root { background: #eef3ff; border-color: #c3d4fb; }
+
+.json {
+  background: #0f172a;
+  color: #d7e3f4;
+  border-radius: 10px;
+  padding: 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow: auto;
+  max-height: 360px;
+}
+
+footer {
+  text-align: center;
+  font-size: 12px;
+  padding: 10px 0 30px;
+}
+
+.hidden { display: none !important; }
